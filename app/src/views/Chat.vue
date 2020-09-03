@@ -1,23 +1,41 @@
 <template>
   <div class="Chat">
-    <transition-group name="chat" tag="div" class="list content">
-      <section v-for="{ key, name, image, message } in chat" :key="key" class="item">
-        <div class="item-image">
-          <img :src="image" width="40" height="40" />
-        </div>
-        <div class="item-detail">
-          <div class="item-name">{{ name }}</div>
-          <div class="item-message">
-            <nl2br tag="div" :text="message" />
+    <v-container>
+      <transition-group name="chat" tag="div" class="list content">
+        <section
+          v-for="{ key, name, image, message, date } in chat"
+          :key="key"
+          class="item"
+        >
+          <div class="item-image">
+            <img :src="image" width="40" height="40" />
           </div>
-        </div>
-      </section>
-    </transition-group>
-    <form action @submit.prevent="doSend" class="form">
-      <div class="error">{{errMsg}}</div>
-      <textarea v-model="input" :disabled="!user.uid" @keydown.enter.exact.prevent="doSend"></textarea>
-      <button type="submit" :disabled="!user.uid" class="send-button">Tweet</button>
-    </form>
+          <div class="item-detail">
+            <div class="item-name">
+              {{ name }}:{{ date }}
+
+              <v-btn small color="dark" icon @click="deRemove(key)">
+                <v-icon>delete</v-icon>
+              </v-btn>
+            </div>
+            <div class="item-message">
+              <nl2br tag="div" :text="message" />
+            </div>
+          </div>
+        </section>
+      </transition-group>
+      <form action @submit.prevent="doSend" class="form">
+        <div class="error">{{ errMsg }}</div>
+        <textarea
+          v-model="input"
+          :disabled="!user.uid"
+          @keydown.enter.exact.prevent="doSend"
+        ></textarea>
+        <button type="submit" :disabled="!user.uid" class="send-button">
+          Tweet
+        </button>
+      </form>
+    </v-container>
   </div>
 </template>
 
@@ -36,14 +54,16 @@ export default {
     };
   },
   created() {
-    firebase.auth().onAuthStateChanged(user => {
+    firebase.auth().onAuthStateChanged((user) => {
       this.user = user ? user : {};
       const ref_message = firebase.database().ref("message");
       if (user) {
         this.chat = [];
         ref_message.limitToLast(10).on("child_added", this.childAdded);
+        ref_message.on("child_removed", this.childRemoved);
       } else {
         ref_message.limitToLast(10).off("child_added", this.childAdded);
+        ref_message.off("child_removed", this.childRemoved);
       }
     });
   },
@@ -53,20 +73,39 @@ export default {
         window.scrollTo(0, document.body.clientHeight);
       });
     },
+    deRemove(key) {
+      firebase
+        .database()
+        .ref("message")
+        .child(key)
+        .remove(() => {
+          this.input = "";
+        });
+    },
     childAdded(snap) {
       const message = snap.val();
       this.chat.push({
         key: snap.key,
         name: message.name,
         image: message.image,
-        message: message.message
+        message: message.message,
+        date: message.date
       });
+      this.scrollBottom();
+    },
+    childRemoved(snap) {
+      const index = this.chat.findIndex(function(message) {
+        return snap.key === message.key;
+      });
+      this.chat.splice(index, 1);
       this.scrollBottom();
     },
     doSend() {
       if (!this.input.length) {
         this.errMsg = "未入力です!";
       }
+      const date = new Date();
+
       if (this.user.uid && this.input.length) {
         firebase
           .database()
@@ -75,7 +114,8 @@ export default {
             {
               message: this.input,
               name: this.user.displayName,
-              image: this.user.photoURL
+              image: this.user.photoURL,
+              date: date.toLocaleString()
             },
             () => {
               this.input = "";
@@ -171,4 +211,3 @@ export default {
   transform: translateX(-1em);
 }
 </style>
-
